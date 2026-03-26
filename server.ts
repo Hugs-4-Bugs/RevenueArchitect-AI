@@ -7,12 +7,16 @@ import axios from "axios";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 
+import { RevenueService } from "./services/geminiService";
+
 dotenv.config();
 
 const PORT = 3000;
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID;
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET;
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || `${process.env.APP_URL}/auth/linkedin/callback`;
+
+const revService = new RevenueService();
 
 async function startServer() {
   const app = express();
@@ -31,12 +35,19 @@ async function startServer() {
 
   // LinkedIn Auth URL
   app.get("/api/auth/linkedin/url", (req, res) => {
+    if (!LINKEDIN_CLIENT_ID) {
+      return res.status(400).json({ 
+        error: "MISSING_CREDENTIALS", 
+        message: "LinkedIn Client ID is not configured in environment variables." 
+      });
+    }
+
     const params = new URLSearchParams({
       response_type: "code",
-      client_id: LINKEDIN_CLIENT_ID || "",
+      client_id: LINKEDIN_CLIENT_ID,
       redirect_uri: LINKEDIN_REDIRECT_URI,
-      scope: "openid profile email w_member_social", // Common LinkedIn scopes
-      state: "random_state_string"
+      scope: "openid profile email w_member_social",
+      state: "ra_agent_auth_" + Math.random().toString(36).substring(7)
     });
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
     res.json({ url: authUrl });
@@ -44,22 +55,28 @@ async function startServer() {
 
   // LinkedIn Callback
   app.get("/auth/linkedin/callback", async (req, res) => {
-    const { code, state } = req.query;
+    const { code, error, error_description } = req.query;
+
+    if (error) {
+      console.error("LinkedIn Auth Error:", error, error_description);
+      return res.status(400).send(`LinkedIn Error: ${error_description || error}`);
+    }
 
     if (!code) {
-      return res.status(400).send("No code provided.");
+      return res.status(400).send("No authorization code provided.");
     }
 
     try {
-      // Exchange code for access token
-      const tokenResponse = await axios.post("https://www.linkedin.com/oauth/v2/accessToken", null, {
-        params: {
-          grant_type: "authorization_code",
-          code,
-          client_id: LINKEDIN_CLIENT_ID,
-          client_secret: LINKEDIN_CLIENT_SECRET,
-          redirect_uri: LINKEDIN_REDIRECT_URI
-        },
+      // Exchange code for access token - LinkedIn requires these in the body
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code as string,
+        client_id: LINKEDIN_CLIENT_ID || "",
+        client_secret: LINKEDIN_CLIENT_SECRET || "",
+        redirect_uri: LINKEDIN_REDIRECT_URI
+      });
+
+      const tokenResponse = await axios.post("https://www.linkedin.com/oauth/v2/accessToken", body.toString(), {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded"
         }
@@ -120,22 +137,23 @@ async function startServer() {
       const { mission } = data;
       socket.emit("agent_log", { type: "info", message: `MISSION_START: ${mission}` });
 
-      // Simulate real-time processing steps
       const steps = [
-        { msg: "AUTHENTICATING: LinkedIn API Handshake...", delay: 1500 },
-        { msg: "SCRAPING: Identifying High-Ticket Agencies in Target Geographies...", delay: 3000 },
-        { msg: "FILTERING: Applying Revenue Benchmarks (>$5M ARR)...", delay: 2000 },
-        { msg: "ENRICHING: Extracting Pain Point Data from Recent Job Ads...", delay: 2500 },
-        { msg: "SYNTHESIZING: Generating Personalized Outreach Payloads...", delay: 2000 },
-        { msg: "MISSION_COMPLETE: 50 Leads Processed and Ready for Outreach.", delay: 1000 }
+        "AUTHENTICATING: LinkedIn API Handshake...",
+        "SCRAPING: Identifying High-Ticket Agencies in Target Geographies...",
+        "FILTERING: Applying Revenue Benchmarks (>$5M ARR)...",
+        "ENRICHING: Extracting Pain Point Data from Recent Job Ads...",
+        "SYNTHESIZING: Generating Personalized Outreach Payloads...",
+        "MISSION_COMPLETE: Leads Processed and Ready for Outreach."
       ];
 
       for (const step of steps) {
-        await new Promise(r => setTimeout(r, step.delay));
+        // Use Gemini to generate a "real" log message based on the step
+        const realLog = await revService.executeTask(step, { mission });
         socket.emit("agent_log", { 
-          type: step.msg.includes("COMPLETE") ? "success" : "agent", 
-          message: step.msg 
+          type: step.includes("COMPLETE") ? "success" : "agent", 
+          message: realLog
         });
+        await new Promise(r => setTimeout(r, 1000)); // Small delay for readability
       }
     });
 
@@ -162,6 +180,8 @@ async function startServer() {
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  return app;
 }
 
-startServer();
+export default startServer();

@@ -12,14 +12,23 @@ const data = [
   { day: '30', profit: 12500 },
 ];
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+  data: {
+    totalProjected: number;
+    mrr: number;
+    ltv: number;
+    cac: number;
+  };
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ data: dashboardData }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Projected" value="$100k" trend="+12.4%" />
-        <StatCard title="Current MRR" value="$8,333" trend="+5.2%" />
-        <StatCard title="Client LTV" value="$14,500" trend="STABLE" />
-        <StatCard title="CAC" value="$124" trend="-18.0%" color="text-green-500" />
+        <StatCard title="Total Projected" value={`$${(dashboardData.totalProjected / 1000).toFixed(0)}k`} trend="+12.4%" />
+        <StatCard title="Current MRR" value={`$${dashboardData.mrr.toLocaleString()}`} trend="+5.2%" />
+        <StatCard title="Client LTV" value={`$${dashboardData.ltv.toLocaleString()}`} trend="STABLE" />
+        <StatCard title="CAC" value={`$${dashboardData.cac}`} trend="-18.0%" color="text-green-500" />
       </div>
 
       <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 lg:p-6 relative overflow-hidden shadow-2xl">

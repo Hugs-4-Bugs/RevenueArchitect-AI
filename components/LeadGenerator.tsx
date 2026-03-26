@@ -6,7 +6,19 @@ const LeadGenerator: React.FC = () => {
   const [prospect, setProspect] = useState({ company: '', contact: '', pain: '' });
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
+  const [researching, setResearching] = useState(false);
   const revService = new RevenueService();
+
+  const handleResearch = async () => {
+    if (!prospect.company) return;
+    setResearching(true);
+    const research = await revService.researchCompany(prospect.company);
+    setProspect({ 
+      ...prospect, 
+      pain: research.painPoints?.join('. ') || 'Research failed to identify specific pain points.' 
+    });
+    setResearching(false);
+  };
 
   const handleGenerate = async () => {
     if (!prospect.company || !prospect.contact || !prospect.pain) return;
@@ -24,7 +36,16 @@ const LeadGenerator: React.FC = () => {
             <h3 className="text-sm font-bold text-white uppercase mb-6 tracking-widest">Prospect Input</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">Target Company</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 flex justify-between">
+                  Target Company
+                  <button 
+                    onClick={handleResearch}
+                    disabled={researching || !prospect.company}
+                    className="text-yellow-500 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {researching ? 'RESEARCHING...' : 'AI RESEARCH'}
+                  </button>
+                </label>
                 <input 
                   type="text" 
                   value={prospect.company}
