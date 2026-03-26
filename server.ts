@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import axios from "axios";
 import cookieParser from "cookie-parser";
@@ -162,26 +161,45 @@ async function startServer() {
     });
   });
 
-  // --- Vite Middleware ---
+  // --- Vite Middleware / Static Serving ---
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    let vite: any;
+    app.use(async (req, res, next) => {
+      if (!vite) {
+        const { createServer: createViteServer } = await import("vite");
+        vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        });
+      }
+      vite.middlewares(req, res, next);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (req, res, next) => {
+      // Skip API and Auth routes
+      if (req.path.startsWith("/api") || req.path.startsWith("/auth")) {
+        return next();
+      }
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Only listen if not on Vercel
+  if (process.env.VERCEL !== "1") {
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 
   return app;
 }
 
-export default startServer();
+// Export the app for Vercel compatibility
+// Note: Socket.io will not work on Vercel's serverless functions.
+const appPromise = startServer();
+export default async (req: any, res: any) => {
+  const app = await appPromise;
+  return app(req, res);
+};
