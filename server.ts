@@ -11,11 +11,23 @@ import { RevenueService } from "./services/geminiService";
 dotenv.config();
 
 const PORT = 3000;
-const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID;
-const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET;
-const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || `${process.env.APP_URL}/auth/linkedin/callback`;
 
 const revService = new RevenueService();
+
+function getLinkedInConfig() {
+  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+  let appUrl = process.env.APP_URL || "";
+  
+  // Normalize APP_URL (remove trailing slash)
+  if (appUrl.endsWith("/")) {
+    appUrl = appUrl.slice(0, -1);
+  }
+
+  const redirectUri = process.env.LINKEDIN_REDIRECT_URI || `${appUrl}/auth/linkedin/callback`;
+
+  return { clientId, clientSecret, redirectUri, appUrl };
+}
 
 async function startServer() {
   const app = express();
@@ -34,17 +46,28 @@ async function startServer() {
 
   // LinkedIn Auth URL
   app.get("/api/auth/linkedin/url", (req, res) => {
-    if (!LINKEDIN_CLIENT_ID) {
+    const { clientId, redirectUri, appUrl } = getLinkedInConfig();
+    
+    console.log("LinkedIn Auth Request:", { clientId: clientId ? "SET" : "MISSING", redirectUri, appUrl });
+
+    if (!clientId) {
       return res.status(400).json({ 
         error: "MISSING_CREDENTIALS", 
-        message: "LinkedIn Client ID is not configured in environment variables." 
+        message: "LinkedIn Client ID is not configured." 
+      });
+    }
+
+    if (!appUrl && !process.env.LINKEDIN_REDIRECT_URI) {
+      return res.status(400).json({ 
+        error: "MISSING_APP_URL", 
+        message: "APP_URL is not configured. Redirect URI cannot be constructed." 
       });
     }
 
     const params = new URLSearchParams({
       response_type: "code",
-      client_id: LINKEDIN_CLIENT_ID,
-      redirect_uri: LINKEDIN_REDIRECT_URI,
+      client_id: clientId,
+      redirect_uri: redirectUri,
       scope: "openid profile email w_member_social",
       state: "ra_agent_auth_" + Math.random().toString(36).substring(7)
     });
@@ -54,6 +77,7 @@ async function startServer() {
 
   // LinkedIn Callback
   app.get("/auth/linkedin/callback", async (req, res) => {
+    const { clientId, clientSecret, redirectUri } = getLinkedInConfig();
     const { code, error, error_description } = req.query;
 
     if (error) {
@@ -70,9 +94,9 @@ async function startServer() {
       const body = new URLSearchParams({
         grant_type: "authorization_code",
         code: code as string,
-        client_id: LINKEDIN_CLIENT_ID || "",
-        client_secret: LINKEDIN_CLIENT_SECRET || "",
-        redirect_uri: LINKEDIN_REDIRECT_URI
+        client_id: clientId || "",
+        client_secret: clientSecret || "",
+        redirect_uri: redirectUri
       });
 
       const tokenResponse = await axios.post("https://www.linkedin.com/oauth/v2/accessToken", body.toString(), {

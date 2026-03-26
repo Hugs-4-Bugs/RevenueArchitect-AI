@@ -100,7 +100,10 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const [isLinkedInConnecting, setIsLinkedInConnecting] = useState(false);
+
   const handleConnectLinkedIn = async () => {
+    setIsLinkedInConnecting(true);
     try {
       const res = await fetch('/api/auth/linkedin/url');
       const data = await res.json();
@@ -110,13 +113,20 @@ const App: React.FC = () => {
         return;
       }
 
+      if (data.error === 'MISSING_APP_URL') {
+        addLog("AUTH_ERROR: APP_URL is not configured. This is required to build the redirect path.", "error");
+        return;
+      }
+
       if (data.url) {
         window.open(data.url, 'linkedin_oauth', 'width=600,height=700');
       } else {
-        throw new Error("Invalid URL returned from server");
+        throw new Error(data.message || "Invalid URL returned from server");
       }
-    } catch (err) {
-      addLog("AUTH_ERROR: Failed to initialize LinkedIn handshake. Check server logs.", "error");
+    } catch (err: any) {
+      addLog(`AUTH_ERROR: ${err.message || "Failed to initialize LinkedIn handshake."}`, "error");
+    } finally {
+      setIsLinkedInConnecting(false);
     }
   };
 
@@ -317,11 +327,14 @@ const App: React.FC = () => {
               </div>
               <button 
                 onClick={isLinkedInConnected ? handleDisconnectLinkedIn : handleConnectLinkedIn}
+                disabled={isLinkedInConnecting}
                 className={`w-full py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all transform active:scale-95 ${
+                  isLinkedInConnecting ? 'opacity-50 cursor-wait' : ''
+                } ${
                   isLinkedInConnected ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
                 }`}
               >
-                {isLinkedInConnected ? 'LinkedIn Connected' : 'Connect LinkedIn'}
+                {isLinkedInConnecting ? 'Initializing...' : isLinkedInConnected ? 'LinkedIn Connected' : 'Connect LinkedIn'}
               </button>
            </div>
 
